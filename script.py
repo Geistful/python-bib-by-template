@@ -82,7 +82,7 @@ def fix(line):
 
 print("Введите название файла c шаблонной первой записью")
 name = input()
-f = io.open(name, "r", encoding="utf8")
+f = io.open(name, "r")
 Temp = param(f)                                 # Сохраняем нужные параметры
 f.close()
 print("Введите путь к папке, bib файлы внутри которой нужно привести к стилю шаблона")
