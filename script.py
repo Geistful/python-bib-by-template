@@ -127,30 +127,30 @@ f.close()
 print("Введите путь к папке, bib файлы внутри которой нужно привести к стилю шаблона")
 folder = input()
 path = folder + "\Edited"
-if not os.path.exists(path):  # Если папка Edited еще не создана
-    os.makedirs(path)  # Создаем
+if not os.path.exists(path):                    # Если папка Edited еще не создана
+    os.makedirs(path)                           # Создаем
 for file in os.listdir(folder):
-    if file.endswith('.bib'):  # Для каждого .bib файла
+    if file.endswith('.bib'):                   # Для каждого .bib файла
         with io.open(os.path.join(folder, file), mode="r", errors='ignore') as fa:
             edit = io.open(path + "\\" + file, mode="w")
-            tags = set()  # Будем сохранять тэги, чтобы не было повторных записей
-            inside = 0  # =1, если внутри структуры записи
-            multilinecont = 0  # =1, если описание на несколько строк
-            multispace = 0  # равно числу пробелов для записи друг под другом
-            emptycont = 0 # иногда содержимое поля пусто, поэтому такие строки мы будем "пропускать"
-            invalidtag = 0 # численный тэг
-            a = ''  # храним скобочку или кавычку
+            tags = set()                        # Будем сохранять тэги, чтобы не было повторных записей
+            inside = 0                          # =1, если внутри структуры записи
+            multilinecont = 0                   # =1, если описание на несколько строк
+            multispace = 0                      # равно числу пробелов для записи друг под другом
+            emptycont = 0                       # иногда содержимое поля пусто, поэтому такие строки мы будем "пропускать"
+            invalidtag = 0                      # численный тэг
+            a = ''                              # храним скобочку или кавычку
             while True:
                 line = fa.readline()
                 line = trim(line)
-                if not line:  # Если строк больше нет
-                    break  # Выходим из while (заканчиваем прочтение файла)
+                if not line:                    # Если строк больше нет
+                    break                       # Выходим из while (заканчиваем прочтение файла)
                 line = line.replace('п»ї', '')
-                if inside == 1 and line[0] == '\n':
+                if inside == 1 and line[0] == '\n':  # пустые строки пропускаются
                     continue
                 if line[0] == ' ':
-                    line = line.lstrip(' ')  # ведущие пробелы больше не нужны
-                if multilinecont == 1:  # случай описания на несколько строк
+                    line = line.lstrip(' ')     # ведущие пробелы больше не нужны
+                if multilinecont == 1:          # случай описания на несколько строк
                     edit.write('\n')
                     line = fix(line)
                     line = line.lstrip(' ')
@@ -160,17 +160,17 @@ for file in os.listdir(folder):
                             end = '}'
                         else:
                             end = '"'
-                        line = line + end  # заменяем на нужный нам по шаблону символ
-                        multilinecont = 0  # описание на несколько строк завершилось
+                        line = line + end       # заменяем на нужный нам по шаблону символ
+                        multilinecont = 0       # описание на несколько строк завершилось
                     edit.write(' ' * multispace + line)  # в любом случае нам нужно вывести строку
                     continue
-                if line[0] == '}':  # только в случае завершения структуры записи
+                if line[0] == '}':              # только в случае завершения структуры записи
                     inside = 0
                     if invalidtag == 1:
                         invalidtag = 0
                         continue
-                    edit.write("\n")  # ввиду особенности writetofile и правила о запятых
-                    edit.write("}\n")  # мы завершаем предыдущую строку либо без запятой (тут)
+                    edit.write("\n")            # ввиду особенности writetofile и правила о запятых
+                    edit.write("}\n")           # мы завершаем предыдущую строку либо без запятой (тут)
                     emptycont = 0
                     continue
                 if invalidtag == 1:
@@ -179,15 +179,15 @@ for file in os.listdir(folder):
                     if emptycont == 1:
                         emptycont = 0
                     else:
-                        edit.write(",\n")  # либо с запятой (когда внутри структуры записи)
+                        edit.write(",\n")       # либо с запятой (когда внутри структуры записи)
                 if line[0] != '@' and inside == 0:  # если мы вне записи и строка - не начало записи
-                    edit.write(line)  # просто печатаем ее без изменений
+                    edit.write(line)            # просто печатаем ее без изменений
                     continue
-                line = fix(line)  # нам будет важен конец строк в структуре, поэтому fix'им
-                if line[0] == '@' and inside == 1:
+                line = fix(line)                # нам будет важен конец строк в структуре, поэтому fix'им
+                if line[0] == '@' and inside == 1:  #если начинается новая запись, а скобка предыдущей не закрыта
                     inside = 0
-                    edit.write("}\n\n")
-                if line[0] == '@' and inside == 0:
+                    edit.write("}\n\n")             #закрываем скобку и делаем отступы
+                if line[0] == '@' and inside == 0:  #случай первой строки записи
                     inside = 1
                     cont = line[line.find('{') + 1:-1]
                     if cont.isnumeric():
@@ -209,14 +209,14 @@ for file in os.listdir(folder):
                         words[0] = words[0].title()
                     edit.write("@" + words[0] + "{" + cont)
                     continue
-                if line[0] != '@' and inside == 1:
-                    posEqual = line.find('=')  # место "=" для нас важно
+                if line[0] != '@' and inside == 1:  # случай внутри записи
+                    posEqual = line.find('=')       # место "=" для нас важно
                     i = 0
                     while line[posEqual+i] != '{' and line[posEqual+i] != '\"' and posEqual+i != len(line)-1:
                         i += 1
-                    pos = posEqual + i  # определяем место кавычки (скобочки)
-                    a = line[pos]  # либо скобочка-кавычка, либо:
-                    if a != '{' and a != '"':  # это случай типа " year = 1984 "
+                    pos = posEqual + i              # определяем место кавычки (скобочки)
+                    a = line[pos]                   # либо скобочка-кавычка, либо:
+                    if a != '{' and a != '"':       # это случай типа " year = 1984 "
                         if line[len(line) - 1] == ',':
                             cont = line[pos:-1]
                         else:
@@ -228,8 +228,8 @@ for file in os.listdir(folder):
                         writelinetofile(edit, line, Temp, cont, 1)
                         continue
                     if a == '{':
-                        a = '}'  # теперь работаем на обработку конца строки
-                    if ifmultiline(line, a) != 0:  # если описание на несколько строк
+                        a = '}'                     # теперь работаем на обработку конца строки
+                    if ifmultiline(line, a) != 0:   # если описание на несколько строк
                         cont = line[pos + 1:-(ifmultiline(line, a))]
                         cont = fixcont(cont)
                         if cont.isspace() or cont == "":
@@ -237,13 +237,10 @@ for file in os.listdir(folder):
                             continue
                         writelinetofile(edit, line, Temp, cont, 1)
                         continue
-                    else:  # иначе описание заканчивается на той же строке
+                    else:                           # иначе описание заканчивается на той же строке
                         cont = line[pos + 1:]
                         multilinecont = 1
                         cont = fixcont(cont)
-                        #if cont.isspace() or cont == "":
-                        #    emptycont = 1
-                        #    continue
                         multispace = writelinetofile(edit, line, Temp, cont, 0)
-            edit.close()  # закрываем новый файл
-        fa.close()  # закрываем исходный файл
+            edit.close()                            # закрываем новый файл
+        fa.close()                                  # закрываем исходный файл
