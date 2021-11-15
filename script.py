@@ -2,245 +2,291 @@ import os
 import io
 
 
-def param(file):  # Функция взятия параметров из файла
-    line = file.readline()  # Читаем первую линию и заменяем специальные знаки
-    words = line.replace('@', ' ').replace('{', ' ').replace(',', ' ').replace('п»ї', ' ')\
-                                  .replace('\\', '').replace('/', '').replace('\'', '').split()
-    if words[0].islower() == 1:  # Проверка на регистр
-        tag = "S"  # запоминаем тэг Small
-    elif words[0].isupper() == 1:
-        tag = "B"  # Тэг - Big
-    else:
-        tag = "T"  # Тэг - Title
-    line = f.readline()  # Читаем вторую строку файла
-    spaceinfront = len(line) - len(line.lstrip(' '))  # Считаем количество пробелом в начале
-    line = line.lstrip(' ')  # Убираем эти пробелы
-    firstword = ""
-    spaceaftertype = 0
-    spaceafterequals = 0
-    cnt = -1
-    for i in line:  # Идем по строке
-        cnt += 1
-        if i != '=':
-            if i == ' ':
-                spaceaftertype += 1  # Увеличиваем пробелы после имени
-            else:
-                firstword += i  # Первое слово
-            continue
-        break
-    for i in range(spaceaftertype+len(firstword)+1, len(line)):
-        if line[i] == ' ':
-            spaceafterequals += 1
+class LineOperations:  # класс методов для преобразования строк
+    @staticmethod
+    def get_words(f_line):  # выделение в лист слов из строки
+        return f_line.replace('@', ' ').replace('{', ' ').replace(',', ' ').replace('п»ї', ' ') \
+            .replace('\\', '').replace('/', '').replace('\'', '').replace('}', ' ') \
+            .replace('"', ' ').replace('=', ' ').split()  # заменяем всё лишнее и split'им
+
+    @staticmethod
+    def terminal_chars(f_line, char):  # определяет количество символов, завершающих строку внутри записи
+        if f_line[-1:] == char:  # Последний символ равен char
+            return 1
+        if f_line[-2:] == (char + ","):  # последние два символа соответствуют char+','
+            return 2
         else:
-            break
-    if firstword.islower() == 1:
-        typetag = "S"  # Запоминаем регистр "имени" Small
-    elif firstword.isupper() == 1:
-        typetag = "B"  # Big
-    else:
-        typetag = "T"  # Title
-    if line.find('{') != -1:
-        tagsymbol = '{'  # Запоминаем во что заключен описывающий текст
-    else:
-        tagsymbol = '"'
-    return tag, spaceinfront, spaceaftertype, tagsymbol, cnt, typetag, spaceafterequals
+            return 0
+
+    @staticmethod
+    def fix_ending(f_line):  # отрезаем от строки '\n' и лишние пробелы до '\n'
+        if f_line[len(f_line) - 1] == '\n':
+            f_line = f_line[:-1]  # убираем переход на новую строку
+            if f_line[len(f_line) - 1] == ' ':
+                f_line = f_line.rstrip(' ')  # убираем все пробелы справа
+        return f_line
+
+    @staticmethod
+    def del_extra_comma(f_line):  # удаление лишних запятых в конце строки (когда одна уже имеется)
+        while len(f_line) > 2 and f_line[len(f_line) - 3] == ',':  # если предпоследняя позиция (не считая '\n')
+            f_line = f_line[:len(f_line) - 3] + f_line[len(f_line) - 2:]  # тоже запятая, то удаляем эту лишнюю запятую
+        return f_line
+
+    @staticmethod
+    def fix_brackets(f_line):  # коррекция правильности скобок/кавычек внутри описания поля
+        open_br_pos = []  # позиции открывающих скобок
+        num_of_open = 0  # кол-во открывающий скобок
+        pos_in_line = 0  # позиция в строке
+        for char in f_line:
+            if char == '\"':
+                f_line = f_line[:pos_in_line] + "\\" + f_line[pos_in_line:]  # для кавычек в тексте добавляем "\\"
+                pos_in_line += 1
+            if char == '{':
+                num_of_open += 1
+                open_br_pos.append(char)
+            if char == '}':
+                if num_of_open == 0:  # закрывающая появилось еще до любой открывающей - удаляем
+                    if char == 0:
+                        f_line = f_line[0:]
+                    else:
+                        f_line = f_line[:pos_in_line - 1] + f_line[pos_in_line:]
+                else:  # иначе, уменьшаем число открывающих на один
+                    num_of_open -= 1
+            pos_in_line += 1
+        if num_of_open > 0:
+            for char in range(num_of_open - 1, 0):  # все оставшиеся открытые удаляем, начиная изнутри
+                num = open_br_pos[char]
+                f_line = f_line[:num - 1] + f_line[num:]
+        return f_line
 
 
-def writelinetofile(edit, line, Temp, cont, notmultiline):
-    words = line.replace('{', ' ').replace('}', ' ').replace('"', ' ').replace('=', ' ').split()
-    spacesbeforecont = 0  # Пробелы до начала текста (для случая MultiLine)
-    if Temp[5] == "S":
-        words[0] = words[0].lower()
-    elif Temp[5] == "B":
-        words[0] = words[0].upper()
-    else:
-        words[0] = words[0].title()
-    if Temp[2] > 1:
-        position = Temp[4] - Temp[1] - len(words[0])  # Высчитываются пробелы от имени до фикс. позиции "="
-        if Temp[3] == '{':  # Конструируется сама строка:
-            edit.write(" " * Temp[1] + words[0] + " " * position + "=" + " "*Temp[6] + "{" + cont + "}" * notmultiline)
+class WordOperations:  # класс методов для слов
+    @staticmethod
+    def get_word_case(word):  # получение регистра слова
+        if word.islower() == 1:
+            return "S"  # small (все буквы строчные)
+        elif word.isupper() == 1:
+            return "B"  # BIG (все буквы заглавные)
         else:
-            edit.write(" " * Temp[1] + words[0] + " " * position + "=" + " "*Temp[6] + "\"" + cont + "\"" * notmultiline)
-        spacesbeforecont = Temp[1] + len(words[0]) + position + 3
-    elif Temp[3] == '{':
-        edit.write(" " * Temp[1] + words[0] + " " * Temp[2] + "=" + " "*Temp[6] + "{" + cont + "}" * notmultiline)
-        spacesbeforecont = Temp[1] + len(words[0]) + Temp[2] + 2 + Temp[6]
-    else:
-        edit.write(" " * Temp[1] + words[0] + " " * Temp[2] + "=" + " "*Temp[6] + "\"" + cont + "\"" * notmultiline)
-        spacesbeforecont = Temp[1] + len(words[0]) + Temp[2] + 2 + Temp[6]
-    return spacesbeforecont
+            return "T"  # Title (только первая буква - заглавная)
+
+    @staticmethod
+    def word_to_case(word, case):  # приведение слова к регистру
+        if case == "S":
+            word = word.lower()
+        elif case == "B":
+            word = word.upper()
+        else:
+            word = word.title()
+        return word
 
 
-def ifmultiline(line, char):
-    if line[-1:] == char:  # Последний символ равен char
-        return 1
-    if line[-2:] == (char + ","):  # Последние два символа соответствуют char+','
-        return 2
-    else:
-        return 0
+class BibFile(object):  # класс, содержащий основные параметры записей bib-файла
+    def __init__(self, name, fldr=None, mode="r", err="ignore"):  # создание пути и открытие соотв. файла
+        if fldr is None:
+            self.path = name
+        else:
+            self.path = fldr + "\\" + name
+        self.file = io.open(self.path, mode=mode, errors=err)
+
+    def next_line(self):
+        return self.file.readline()
+
+    keys = set()  # будем сохранять citekey, чтобы не было повторных записей
+    inside = 0  # ==1, если внутри структуры записи
+    multi_line_text = 0  # ==1, если описание на несколько строк
+    spaces_for_multi = 0  # равно числу пробелов для записи строк текста тега друг под другом
+    empty_text = 0  # иногда содержимое поля пусто: такие строки мы будем пропускать
+    invalid_type = 0  # ==1, если тип корректен
+    closing_char = ''  # храним скобочку или кавычку, в которые заключен текст, описывающий тэг
 
 
-def fix(line):
-    if line[len(line) - 1] == '\n':
-        line = line[:-1]
-        if line[len(line) - 1] == ' ':
-            line = line.rstrip(' ')
-    return line
-
-def trim(line):
-    while len(line) > 2 and line[len(line) - 3] == ',':
-        line = line[:len(line) - 3] + line[len(line) - 2:]
-    return line
-
-def fixcont(line):
-    openparenth = []
-    opened = 0
-    cnt = 0
-    for i in line:
-        if i == '\"':
-            line = line[:cnt] + "\\" + line[cnt:]
-            cnt += 1
-        if i == '{':
-            opened += 1
-            openparenth.append(i)
-        if i == '}':
-            if opened == 0:
-                if i == 0:
-                    line = line[0:]
+class BibFileParameters:  # класс, хранящий параметры шаблонной записи
+    def __init__(self, file: BibFile):
+        lines = file.next_line()  # читаем первую строку и заменяем специальные знаки
+        f_words = LineOperations.get_words(lines)
+        self.type_case = WordOperations.get_word_case(f_words[0])  # получаем регист типа
+        lines = file.next_line()  # читаем вторую строку файла
+        self.space_before_tag = len(lines) - len(lines.lstrip(' '))  # считаем количество пробелов в начале
+        lines = lines.lstrip(' ')  # убираем эти пробелы
+        tag_word = ""  # тэг (слово)
+        self.space_after_tag = 0  # пробелы перед тэгом
+        self.space_after_equals = 0  # пробелы после знака равно
+        self.equals_pos = -1  # позиция знака равно
+        for char in lines:  # идем по строке
+            self.equals_pos += 1
+            if char != '=':
+                if char == ' ':
+                    self.space_after_tag += 1  # увеличиваем кол-во пробелов после имени
                 else:
-                    line = line[:cnt - 1] + line[cnt:]
+                    tag_word += char  # иначе идет сам тэг
+                continue
+            break
+        for char in range(self.space_after_tag + len(tag_word) + 1, len(lines)):  # идем дальше по строке от знака равно
+            if lines[char] == ' ':
+                self.space_after_equals += 1
             else:
-                opened -= 1
-        cnt += 1
-    if opened > 0:
-        for i in range(opened-1, 0):
-            num = openparenth[i]
-            line = line[:num-1]+line[num:]
-    return line
+                break  # если встречается что-то, кроме пробела, то подсчет заканчивается
+        self.tag_case = WordOperations.get_word_case(tag_word)
+        if lines.find('{') != -1:
+            self.tag_bracket = "{}"  # запоминаем во что заключен описывающий текст
+        else:
+            self.tag_bracket = "\"\""
+
+
+class BibFileOperations:  # класс операций, связанных с bib-файлами (конкретно здесь - запись в bib-файл)
+    @staticmethod
+    def write_to_file(dest: BibFile, f_line, param: BibFileParameters, text, notmultiline):
+        f_words = LineOperations.get_words(f_line)
+        f_words[0] = WordOperations.word_to_case(f_words[0], param.tag_case)
+        position = param.space_after_tag
+        increment = position + 2 + param.space_after_equals
+        if param.space_after_tag > 1:
+            position = param.equals_pos - param.space_before_tag - len(f_words[0])  # кол-во пробелов м/у тэгом и "="
+            increment = position + 3
+        dest.file.write(" " * param.space_before_tag + f_words[0] + " " * position + "=" +
+                        " " * param.space_after_equals + param.tag_bracket[0] + text +
+                        param.tag_bracket[1] * notmultiline)
+        spaces_for_multiline = param.space_before_tag + len(f_words[0]) + increment  # кол-во пробелов для записи
+        return spaces_for_multiline                                                  # нескольких строк
 
 
 print("Введите название файла c шаблонной первой записью")
-name = input()
-f = io.open(name, "r")
-Temp = param(f)  # Сохраняем нужные параметры
-f.close()
+template = BibFile(input())  # шаблон по первой записи в bib-файле
+parameters = BibFileParameters(template)  # берем параметры шаблона
+template.file.close()
 print("Введите путь к папке, bib файлы внутри которой нужно привести к стилю шаблона")
-folder = input()
-path = folder + "\Edited"
-if not os.path.exists(path):                    # Если папка Edited еще не создана
-    os.makedirs(path)                           # Создаем
-for file in os.listdir(folder):
-    if file.endswith('.bib'):                   # Для каждого .bib файла
-        with io.open(os.path.join(folder, file), mode="r", errors='ignore') as fa:
-            edit = io.open(path + "\\" + file, mode="w")
-            tags = set()                        # Будем сохранять тэги, чтобы не было повторных записей
-            inside = 0                          # =1, если внутри структуры записи
-            multilinecont = 0                   # =1, если описание на несколько строк
-            multispace = 0                      # равно числу пробелов для записи друг под другом
-            emptycont = 0                       # иногда содержимое поля пусто, поэтому такие строки мы будем "пропускать"
-            invalidtag = 0                      # численный тэг
-            a = ''                              # храним скобочку или кавычку
-            while True:
-                line = fa.readline()
-                line = trim(line)
-                if not line:                    # Если строк больше нет
-                    break                       # Выходим из while (заканчиваем прочтение файла)
-                line = line.replace('п»ї', '')
-                if inside == 1 and line[0] == '\n':  # пустые строки пропускаются
-                    continue
-                if line[0] == ' ':
-                    line = line.lstrip(' ')     # ведущие пробелы больше не нужны
-                if multilinecont == 1:          # случай описания на несколько строк
-                    edit.write('\n')
-                    line = fix(line)
-                    line = line.lstrip(' ')
-                    if ifmultiline(line, a) != 0:
-                        line = line[:-(ifmultiline(line, a))]  # убираем закрывающую скобочку-кавычку
-                        if Temp[3] == '{':
-                            end = '}'
-                        else:
-                            end = '"'
-                        line = line + end       # заменяем на нужный нам по шаблону символ
-                        multilinecont = 0       # описание на несколько строк завершилось
-                    edit.write(' ' * multispace + line)  # в любом случае нам нужно вывести строку
-                    continue
-                if line[0] == '}':              # только в случае завершения структуры записи
-                    inside = 0
-                    if invalidtag == 1:
-                        invalidtag = 0
-                        continue
-                    edit.write("\n")            # ввиду особенности writetofile и правила о запятых
-                    edit.write("}\n")           # мы завершаем предыдущую строку либо без запятой (тут)
-                    emptycont = 0
-                    continue
-                if invalidtag == 1:
-                    continue
-                elif inside == 1:
-                    if emptycont == 1:
-                        emptycont = 0
+folder = input()  # папка
+path = folder + "\Edited"  # путь к папке с результатами работы
+if not os.path.exists(path):  # создаем папку Edited, если еще не создана
+    os.makedirs(path)
+for files in os.listdir(folder):
+    if files.endswith('.bib'):  # для каждого .bib файла
+        source_bib = BibFile(files, folder)  # открытый на чтение оригинальный файл
+        result_bib = BibFile(files, path, "w")  # открытый на запись файл с результатом
+        while True:
+            # обработка следующей строки файла
+            line = source_bib.next_line()  # читаем строку
+            line = LineOperations.del_extra_comma(line)  # удаляем лишнее
+            if not line:  # если строк больше нет
+                break  # выходим из while (заканчиваем прочтение файла)
+            line = line.replace('п»ї', '')  # удаляем символ кодировки UTF-8, если он есть
+
+            # случай пустых строк внутри записи (пропускаются):
+            if result_bib.inside == 1 and line[0] == '\n':
+                continue
+
+            # ведущие пробелы убираем:
+            if line[0] == ' ':
+                line = line.lstrip(' ')
+
+            # случай описания на несколько строк:
+            if result_bib.multi_line_text == 1:
+                result_bib.file.write('\n')  # сначала переходим на новую строку
+                line = LineOperations.fix_ending(line)
+                line = line.lstrip(' ')
+                terminal = LineOperations.terminal_chars(line, result_bib.closing_char)
+                if terminal != 0:
+                    line = line[:-terminal]  # убираем закрывающую скобочку-кавычку
+                    if parameters.tag_bracket[0] == '{':
+                        end = '}'
                     else:
-                        edit.write(",\n")       # либо с запятой (когда внутри структуры записи)
-                if line[0] != '@' and inside == 0:  # если мы вне записи и строка - не начало записи
-                    edit.write(line)            # просто печатаем ее без изменений
+                        end = '"'
+                    line = line + end  # заменяем на нужный нам по шаблону символ
+                    result_bib.multi_line_text = 0  # описание на несколько строк завершилось
+                result_bib.file.write(' ' * result_bib.spaces_for_multi + line)  # выводим след. строку с отступом
+                continue
+
+            # В случае завершения структуры записи:
+            if line[0] == '}':
+                result_bib.inside = 0  # отмечаем, что мы выходим из записи
+                if result_bib.invalid_type == 1:
+                    result_bib.invalid_type = 0
                     continue
-                line = fix(line)                # нам будет важен конец строк в структуре, поэтому fix'им
-                if line[0] == '@' and inside == 1:  #если начинается новая запись, а скобка предыдущей не закрыта
-                    inside = 0
-                    edit.write("}\n\n")             #закрываем скобку и делаем отступы
-                if line[0] == '@' and inside == 0:  #случай первой строки записи
-                    inside = 1
-                    cont = line[line.find('{') + 1:-1]
-                    if cont.isnumeric():
-                        invalidtag = 1
-                        continue
-                    if cont in tags:
-                        invalidtag = 1
-                        continue
-                    else:
-                        tags.add(cont)
-                    cont = cont.replace('\\', '').replace('/', '').replace('\'', '')
-                    words = line.replace('@', ' ').replace('{', ' ').replace(',', ' ')\
-                                .replace('\\', '').replace('/', '').replace('\'', '').split()
-                    if Temp[0] == "B":
-                        words[0] = words[0].upper()
-                    elif Temp[0] == "S":
-                        words[0] = words[0].lower()
-                    else:
-                        words[0] = words[0].title()
-                    edit.write("@" + words[0] + "{" + cont)
+                result_bib.file.write("\n")  # ввиду особенности writetofile и правила о запятых
+                result_bib.file.write("}\n")  # мы завершаем предыдущую строку либо без запятой (тут)
+                result_bib.empty_text = 0
+                continue
+
+            # для неправильных записей строки просто пропускаются
+            if result_bib.invalid_type == 1:
+                continue
+            elif result_bib.inside == 1:
+                if result_bib.empty_text == 1:
+                    result_bib.empty_text = 0
+                else:
+                    result_bib.file.write(",\n")  # либо с запятой (когда внутри структуры записи)
+
+            # если мы вне записи и строка - не начало записи
+            if line[0] != '@' and result_bib.inside == 0:
+                result_bib.file.write(line)  # просто печатаем ее без изменений
+                continue
+            line = LineOperations.fix_ending(line)  # нам будет важен конец строк в структуре, поэтому fix_ending'им
+
+            # если начинается новая запись, а скобка предыдущей не закрыта
+            if line[0] == '@' and result_bib.inside == 1:
+                result_bib.inside = 0
+                result_bib.file.write("}\n\n")  # закрываем скобку и делаем отступы
+
+            # случай первой строки записи
+            if line[0] == '@' and result_bib.inside == 0:
+                result_bib.inside = 1
+                citekey = line[line.find('{') + 1:-1]  # citekey (ключ цитирования) - то, что после скобки и до ','
+                citekey = citekey.replace('\\', '').replace('/', '').replace('\'', '')
+                if citekey.isnumeric() == 1:  # ключ цитирования не может быть просто числом
+                    result_bib.invalid_type = 1
                     continue
-                if line[0] != '@' and inside == 1:  # случай внутри записи
-                    posEqual = line.find('=')       # место "=" для нас важно
-                    i = 0
-                    while line[posEqual+i] != '{' and line[posEqual+i] != '\"' and posEqual+i != len(line)-1:
-                        i += 1
-                    pos = posEqual + i              # определяем место кавычки (скобочки)
-                    a = line[pos]                   # либо скобочка-кавычка, либо:
-                    if a != '{' and a != '"':       # это случай типа " year = 1984 "
-                        if line[len(line) - 1] == ',':
-                            cont = line[pos:-1]
-                        else:
-                            cont = line[pos:]
-                        cont = fixcont(cont)
-                        if cont.isspace() or cont == "":
-                            emptycont = 1
-                            continue
-                        writelinetofile(edit, line, Temp, cont, 1)
+                if citekey in result_bib.keys:  # если ключ цитирования уже был, то такую запись не берем
+                    result_bib.invalid_type = 1
+                    continue
+                else:
+                    result_bib.keys.add(citekey)  # иначе, добавим ключ цитирования
+                words = LineOperations.get_words(line)
+                words[0] = WordOperations.word_to_case(words[0], parameters.type_case)
+                result_bib.file.write("@" + words[0] + "{" + citekey)
+                continue
+
+            # случай внутри записи
+            if line[0] != '@' and result_bib.inside == 1:
+                equal_pos = line.find('=')  # место "=" для нас важно
+                i = 0
+                # ищем скобку/кавычку
+                while line[equal_pos + i] != '{' and line[equal_pos + i] != '\"' and equal_pos + i != len(line) - 1:
+                    i += 1
+                bracket_pos = equal_pos + i  # определяем место кавычки (скобочки)
+                result_bib.closing_char = line[bracket_pos]  # либо скобочка-кавычка, либо:
+                if result_bib.closing_char != '{' and result_bib.closing_char != '"':  # это случай типа: year = 1984
+                    j = 1
+                    while line[equal_pos + j] == ' ':  # ищем первую позицию текста тэга
+                        j += 1
+                    if line[len(line) - 1] == ',':
+                        tag_text = line[equal_pos+j:-1]
+                    else:
+                        tag_text = line[equal_pos+j:]
+                    tag_text = LineOperations.fix_brackets(tag_text)
+                    if tag_text.isspace() or tag_text == "":
+                        result_bib.empty_text = 1  # пустые строки некорректны - их мы пропускаем
                         continue
-                    if a == '{':
-                        a = '}'                     # теперь работаем на обработку конца строки
-                    if ifmultiline(line, a) != 0:   # если описание на несколько строк
-                        cont = line[pos + 1:-(ifmultiline(line, a))]
-                        cont = fixcont(cont)
-                        if cont.isspace() or cont == "":
-                            emptycont = 1
-                            continue
-                        writelinetofile(edit, line, Temp, cont, 1)
+                    BibFileOperations.write_to_file(result_bib, line, parameters, tag_text, 1)
+                    continue
+                # теперь работаем на обработку конца строки
+                if result_bib.closing_char == '{':
+                    result_bib.closing_char = '}'  # скобка "переворачивается", а кавычка не изменяется
+                terminal = LineOperations.terminal_chars(line, result_bib.closing_char)
+                if terminal != 0:  # если описание в одну строку num_of_ending_chars
+                    tag_text = line[bracket_pos + 1:-terminal]
+                    tag_text = LineOperations.fix_brackets(tag_text)
+                    if tag_text.isspace() or tag_text == "":
+                        result_bib.empty_text = 1
                         continue
-                    else:                           # иначе описание заканчивается на той же строке
-                        cont = line[pos + 1:]
-                        multilinecont = 1
-                        cont = fixcont(cont)
-                        multispace = writelinetofile(edit, line, Temp, cont, 0)
-            edit.close()                            # закрываем новый файл
-        fa.close()                                  # закрываем исходный файл
+                    BibFileOperations.write_to_file(result_bib, line, parameters, tag_text, 1)
+                    continue
+                else:  # иначе описание на несколько строк
+                    tag_text = line[bracket_pos + 1:]
+                    result_bib.multi_line_text = 1
+                    tag_text = LineOperations.fix_brackets(tag_text)
+                    result_bib.spaces_for_multi = BibFileOperations.write_to_file(result_bib, line,
+                                                                                  parameters, tag_text, 0)
+        result_bib.keys.clear()  # очищаем сет ключей для нового файла
+        source_bib.file.close()  # закрываем исходный файл
+        result_bib.file.close()  # закрываем полученный файл
